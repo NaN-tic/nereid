@@ -2,8 +2,55 @@
 #this repository contains the full copyright notices and license terms.
 import re
 import os
+import sys
+import time
+import unittest
 import ConfigParser
 from setuptools import setup, Command
+
+
+class PostgresTest(Command):
+    """
+    Run the tests on Postgres.
+    """
+    description = "Run tests on Postgresql"
+
+    user_options = []
+
+    def initialize_options(self):
+        pass
+
+    def finalize_options(self):
+        pass
+
+    def run(self):
+        from trytond.config import CONFIG
+        CONFIG['db_type'] = 'postgresql'
+        CONFIG['db_host'] = 'localhost'
+        CONFIG['db_port'] = 5432
+        CONFIG['db_user'] = 'postgres'
+        CONFIG['timezone'] = 'UTC'
+
+        from trytond import backend
+        import trytond.tests.test_tryton
+
+        # Set the db_type again because test_tryton writes this to sqlite
+        # again
+        CONFIG['db_type'] = 'postgresql'
+
+        trytond.tests.test_tryton.DB_NAME = 'test_' + str(int(time.time()))
+        from trytond.tests.test_tryton import DB_NAME
+        trytond.tests.test_tryton.DB = backend.get('Database')(DB_NAME)
+        from trytond.pool import Pool
+        Pool.test = True
+        trytond.tests.test_tryton.POOL = Pool(DB_NAME)
+
+        from tests import suite
+        test_result = unittest.TextTestRunner(verbosity=3).run(suite())
+
+        if test_result.wasSuccessful():
+            sys.exit(0)
+        sys.exit(-1)
 
 
 class RunAudit(Command):
@@ -57,10 +104,10 @@ minor_version = int(minor_version)
 install_requires = [
     'pytz',
     'distribute',
-    'flask',
-    'wtforms',
-    'wtforms-recaptcha',
+    'flask>=0.10',
+    'flask-wtf',
     'babel',
+    'blinker',
     'speaklater',
     'Flask-Babel>=0.9',
 ]
@@ -128,14 +175,12 @@ setup(
     test_suite='tests.suite',
     test_loader='trytond.test_loader:Loader',
     tests_require=[
-        'trytond_nereid_test >= %s.%s, < %s.%s' %
-            (major_version, minor_version, major_version,
-                minor_version + 1),
+        'trytond_nereid_test >= 3.0.3.0, < 3.1',
         'mock',
         'pycountry',
-        'blinker',
     ],
     cmdclass={
         'audit': RunAudit,
+        'test_on_postgres': PostgresTest,
     },
 )
